@@ -3,175 +3,204 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pro Multi-Format Barcode Generator</title>
+    <title>PDF Layout Composer - Barcode Pro</title>
     <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     
     <style>
-        :root { --paper-width: 210mm; --paper-height: 297mm; }
-        body { font-family: Arial, sans-serif; background: #eef1f4; padding: 20px; margin: 0; }
+        :root { --p-width: 210mm; --p-height: 297mm; }
+        body { font-family: 'Segoe UI', Arial, sans-serif; background: #2c3e50; color: #fff; padding: 20px; margin: 0; }
         
-        .no-print { 
-            max-width: 900px; margin: auto; background: white; padding: 25px; 
-            border-radius: 12px; box-shadow: 0 5px 20px rgba(0,0,0,0.1); margin-bottom: 30px; 
+        /* Sidebar Composer Controls */
+        .composer-sidebar { 
+            position: fixed; left: 20px; top: 20px; width: 320px; 
+            background: #ffffff; color: #333; padding: 20px; 
+            border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            z-index: 100; max-height: 90vh; overflow-y: auto;
         }
 
-        .controls { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; }
-        textarea { grid-column: span 3; height: 100px; padding: 12px; border: 1px solid #ccc; border-radius: 6px; font-size: 14px; }
+        .field { margin-bottom: 15px; }
+        label { display: block; font-size: 11px; font-weight: bold; text-transform: uppercase; color: #7f8c8d; margin-bottom: 5px; }
+        textarea, input, select { width: 100%; padding: 10px; border: 1px solid #dfe6e9; border-radius: 6px; box-sizing: border-box; font-family: monospace; }
         
-        .field-group { display: flex; flex-direction: column; gap: 5px; }
-        label { font-size: 12px; font-weight: bold; color: #555; }
-        select, input { padding: 10px; border: 1px solid #ccc; border-radius: 6px; }
-
-        .stats { grid-column: span 3; background: #f8f9fa; padding: 10px; border-radius: 6px; font-size: 14px; color: #333; border-left: 4px solid #007bff; }
-        
-        .btn-group { grid-column: span 3; display: flex; gap: 10px; margin-top: 10px; }
-        button { flex: 1; padding: 14px; cursor: pointer; border: none; border-radius: 6px; font-weight: bold; font-size: 16px; transition: 0.2s; }
-        .btn-gen { background: #007bff; color: white; }
-        .btn-pdf { background: #28a745; color: white; }
+        button { width: 100%; padding: 12px; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; transition: 0.2s; margin-top: 10px; }
+        .btn-main { background: #0984e3; color: white; }
+        .btn-pdf { background: #d63031; color: white; }
         button:hover { opacity: 0.9; transform: translateY(-1px); }
 
-        /* Paper Simulation Area */
-        #print-area { 
-            width: var(--paper-width); 
-            min-height: var(--paper-height);
-            margin: auto;
+        /* The PDF Paper Preview (Canvas) */
+        .preview-wrapper { margin-left: 360px; display: flex; justify-content: center; }
+        #pdf-composer { 
+            width: var(--p-width); 
+            min-height: var(--p-height);
             background: white;
             display: grid; 
-            grid-template-columns: repeat(3, 1fr); 
+            grid-template-columns: repeat(3, 1fr); /* 3 Column Layout */
             align-content: start;
-            box-shadow: 0 0 10px rgba(0,0,0,0.2);
+            padding: 10mm;
+            box-sizing: border-box;
+            box-shadow: 0 0 50px rgba(0,0,0,0.5);
+            color: #000;
         }
 
-        .barcode-card { 
-            border: 0.1mm solid #eee; 
-            box-sizing: border-box;
+        .sticker-cell { 
+            border: 0.1mm dashed #ecf0f1; /* Cutting guides */
             display: flex;
             flex-direction: column;
-            align-items: center;
             justify-content: center;
-            padding: 8mm 4mm;
-            page-break-inside: avoid;
+            align-items: center;
+            padding: 5mm;
+            box-sizing: border-box;
         }
 
-        svg { width: 100% !important; height: auto !important; }
+        /* Compressed Barcode Style */
+        svg { max-width: 85%; height: auto !important; }
 
         @media print {
-            .no-print { display: none; }
-            body { padding: 0; background: white; }
-            #print-area { margin: 0; border: none; box-shadow: none; width: var(--paper-width); }
+            .composer-sidebar { display: none; }
+            body { background: white; padding: 0; }
+            .preview-wrapper { margin: 0; }
+            #pdf-composer { box-shadow: none; border: none; }
         }
     </style>
 </head>
 <body>
 
-<div class="no-print">
-    <h2 style="margin-top:0">Pro Barcode Suite</h2>
-    <div class="controls">
-        <textarea id="barcode-input" placeholder="Enter codes (one per line)...&#10;7K2P9N4X&#10;B5M1R8W3"></textarea>
-        
-        <div class="field-group">
-            <label>Paper Size</label>
-            <select id="paper-size" onchange="updatePaperSize()">
-                <option value="a4">A4 (Standard)</option>
-                <option value="letter">US Letter</option>
-                <option value="a5">A5 (Small)</option>
-            </select>
-        </div>
-
-        <div class="field-group">
-            <label>Quantity Per Code</label>
-            <input type="number" id="qty-input" value="1" min="1">
-        </div>
-
-        <div class="field-group">
-            <label>Label Height (mm)</label>
-            <input type="number" id="height-input" value="40" min="20">
-        </div>
-
-        <div class="stats" id="counter">Total Labels: 0 | Pages: 0</div>
-
-        <div class="btn-group">
-            <button class="btn-gen" onclick="generateBarcodes()">Generate Labels</button>
-            <button class="btn-pdf" onclick="exportToPDF()">Save PDF</button>
-        </div>
+<div class="composer-sidebar">
+    <h3 style="margin-top:0; color:#0984e3;">barcode generator</h3>
+    
+    <div class="field">
+        <label>Input Data</label>
+        <textarea id="data-input" rows="6"></textarea>
     </div>
+
+    <div class="field">
+        <label>Paper Standard</label>
+        <select id="paper-size" onchange="adjustPaper()">
+            <option value="a4">A4 (210 x 297mm)</option>
+            <option value="letter">Letter (216 x 279mm)</option>
+        </select>
+    </div>
+
+    <div class="field">
+        <label>Label Height (mm)</label>
+        <input type="number" id="label-height" value="35">
+    </div>
+
+    <button class="btn-main" onclick="composeLayout()">Generate</button>
+    <button class="btn-pdf" onclick="exportPDF()">Export to PDF</button>
 </div>
 
-<div id="print-area"></div>
+<div class="preview-wrapper">
+    <div id="pdf-composer"></div>
+</div>
 
 <script>
-    const sizes = {
-        a4: { w: '210mm', h: '297mm' },
-        letter: { w: '215.9mm', h: '279.4mm' },
-        a5: { w: '148mm', h: '210mm' }
-    };
-
-    function updatePaperSize() {
-        const selected = document.getElementById('paper-size').value;
+    function adjustPaper() {
+        const size = document.getElementById('paper-size').value;
         const root = document.querySelector(':root');
-        root.style.setProperty('--paper-width', sizes[selected].w);
-        root.style.setProperty('--paper-height', sizes[selected].h);
+        if(size === 'a4') {
+            root.style.setProperty('--p-width', '210mm');
+            root.style.setProperty('--p-height', '297mm');
+        } else {
+            root.style.setProperty('--p-width', '215.9mm');
+            root.style.setProperty('--p-height', '279.4mm');
+        }
     }
 
-    function generateBarcodes() {
-        const input = document.getElementById('barcode-input').value;
-        const qty = parseInt(document.getElementById('qty-input').value) || 1;
-        const labelHeight = document.getElementById('height-input').value;
-        const printArea = document.getElementById('print-area');
+    function composeLayout() {
+        const input = document.getElementById('data-input').value;
+        const h = document.getElementById('label-height').value;
+        const composer = document.getElementById('pdf-composer');
         
-        const codes = input.split('\n').filter(code => code.trim() !== "");
-        printArea.innerHTML = ""; 
+        const codes = input.split('\n').filter(c => c.trim() !== "");
+        composer.innerHTML = ""; 
 
-        let totalCount = 0;
+        codes.forEach((code, i) => {
+            const cell = document.createElement('div');
+            cell.className = 'sticker-cell';
+            cell.style.height = h + "mm";
+            
+            const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+            const id = `bc-${i}`;
+            svg.setAttribute("id", id);
+            
+            cell.appendChild(svg);
+            composer.appendChild(cell);
 
-        codes.forEach((code, index) => {
-            for(let i = 0; i < qty; i++) {
-                const card = document.createElement('div');
-                card.className = 'barcode-card';
-                card.style.height = labelHeight + "mm";
-                
-                const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-                const uniqueId = `b-${index}-${i}`;
-                svg.setAttribute("id", uniqueId);
-                
-                card.appendChild(svg);
-                printArea.appendChild(card);
-
-                JsBarcode(`#${uniqueId}`, code, {
-                    format: "CODE128",
-                    width: 3,
-                    height: 60,
-                    displayValue: true,
-                    font: "Arial",
-                    fontSize: 16,
-                    margin: 5
-                });
-                totalCount++;
-            }
+            JsBarcode(`#${id}`, code, {
+                format: "CODE128",
+                width: 1.2,
+                height: 50,
+                displayValue: true,
+                font: "Arial",
+                fontSize: 14,
+                fontOptions: "bold",
+                background: "transparent"
+            });
         });
-
-        document.getElementById('counter').innerText = `Total Labels: ${totalCount} | Estimated Pages: ${Math.ceil(totalCount/24)}`;
     }
 
-    async function exportToPDF() {
-        const { jsPDF } = window.jspdf;
-        const element = document.getElementById('print-area');
-        const paperKey = document.getElementById('paper-size').value;
+    async function exportPDF() {
+        const composer = document.getElementById('pdf-composer');
+        const stickers = Array.from(document.querySelectorAll('.sticker-cell'));
         
-        if (!element.hasChildNodes()) return alert("No barcodes to export!");
+        if (stickers.length === 0) return alert("Compose the layout first!");
 
-        const canvas = await html2canvas(element, { scale: 2 });
-        const imgData = canvas.toDataURL('image/png');
+        const pdfSize = document.getElementById('paper-size').value;
+        const pdf = new jspdf.jsPDF('p', 'mm', pdfSize);
         
-        // Match PDF size to the selected format
-        const pdf = new jsPDF('p', 'mm', paperKey);
-        const pageWidth = pdf.internal.pageSize.getWidth();
-        const pageHeight = (canvas.height * pageWidth) / canvas.width;
+        const pw = pdf.internal.pageSize.getWidth();
+        const ph = pdf.internal.pageSize.getHeight();
 
-        pdf.addImage(imgData, 'PNG', 0, 0, pageWidth, pageHeight);
-        pdf.save(`barcodes_${paperKey}.pdf`);
+        // Multi-page Calculation
+        const labelHeightMm = parseFloat(document.getElementById('label-height').value);
+        const paddingOffset = 20; // Accounts for 10mm top/bottom padding
+        const rowsPerPage = Math.floor((ph - paddingOffset) / labelHeightMm);
+        const stickersPerPage = rowsPerPage * 3; 
+
+        for (let i = 0; i < stickers.length; i += stickersPerPage) {
+            if (i > 0) pdf.addPage();
+
+            // Create temporary container for the current page
+            const pageContainer = document.createElement('div');
+            pageContainer.style.width = getComputedStyle(document.documentElement).getPropertyValue('--p-width');
+            pageContainer.style.display = 'grid';
+            pageContainer.style.gridTemplateColumns = 'repeat(3, 1fr)';
+            pageContainer.style.padding = '10mm';
+            pageContainer.style.background = 'white';
+            pageContainer.style.boxSizing = 'border-box';
+
+            // Add the slice of stickers for this specific page
+            const slice = stickers.slice(i, i + stickersPerPage);
+            slice.forEach(s => {
+                const clone = s.cloneNode(true);
+                pageContainer.appendChild(clone);
+            });
+
+            // Add a small footer in the PDF layout
+            const footer = document.createElement('div');
+            footer.style.gridColumn = 'span 3';
+            footer.style.textAlign = 'right';
+            footer.style.fontSize = '8pt';
+            footer.style.color = '#7f8c8d';
+            footer.style.paddingTop = '5mm';
+            footer.innerText = `Page ${Math.floor(i/stickersPerPage) + 1} | Generated by Barcode Pro`;
+            pageContainer.appendChild(footer);
+
+            document.body.appendChild(pageContainer);
+            
+            // Render high-quality canvas
+            const canvas = await html2canvas(pageContainer, { scale: 3, useCORS: true });
+            const imgData = canvas.toDataURL('image/png');
+            
+            pdf.addImage(imgData, 'PNG', 0, 0, pw, (canvas.height * pw) / canvas.width);
+            
+            document.body.removeChild(pageContainer);
+        }
+
+        pdf.save("Barcode_Composer_Report.pdf");
     }
 </script>
 
